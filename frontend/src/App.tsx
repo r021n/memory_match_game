@@ -1,40 +1,86 @@
-import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
+import { useEffect } from "react";
+import socket from "./socket";
+import { useGameStore } from "./store/gameStore";
+import Lobby from "./components/Lobby";
+import Board from "./components/Board";
+import GameOver from "./components/GameOver";
 
-const socket = io("http://localhost:3001");
-
-function App() {
-  const [connected, setConnected] = useState(false);
+export default function App() {
+  const {
+    status,
+    setMySocketId,
+    setPlayers,
+    setStatus,
+    setCurrentPlayerId,
+    initCards,
+    flipCard,
+    matchCards,
+    unmatchCards,
+    setGameOver,
+  } = useGameStore();
 
   useEffect(() => {
     socket.on("connect", () => {
-      setConnected(true);
+      console.log("Terhubung ke server:", socket.id);
+      if (socket.id) {
+        setMySocketId(socket.id);
+      }
     });
 
-    socket.on("disconnect", () => {
-      setConnected(false);
+    socket.on("room-update", ({ players, status: roomStatus }) => {
+      setPlayers(players);
+
+      if (roomStatus === "playing") {
+        setStatus("playing");
+      }
+    });
+
+    socket.on("game-start", ({ cards, currentPlayerId }) => {
+      initCards(cards);
+      setCurrentPlayerId(currentPlayerId);
+      setStatus("playing");
+    });
+
+    socket.on("card-flipped", ({ cardIndex, value }) => {
+      flipCard(cardIndex, value);
+    });
+
+    socket.on("cards-matched", ({ cardIndices, scores, currentPlayerId }) => {
+      matchCards(cardIndices, scores);
+      setCurrentPlayerId(currentPlayerId);
+    });
+
+    socket.on("cards-unmatched", ({ cardIndices, currentPlayerId }) => {
+      unmatchCards(cardIndices);
+      setCurrentPlayerId(currentPlayerId);
+    });
+
+    socket.on("game-over", ({ scores, winner }) => {
+      setGameOver(scores, winner);
+    });
+
+    socket.on("game-error", ({ message }) => {
+      console.warn("Game error:", message);
     });
 
     return () => {
       socket.off("connect");
-      socket.off("disconnect");
+      socket.off("room-update");
+      socket.off("game-start");
+      socket.off("card-flipped");
+      socket.off("cards-matched");
+      socket.off("cards-unmatched");
+      socket.off("game-over");
+      socket.off("game-error");
     };
   }, []);
 
-  return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-white mb-4">
-          Memory Match Game
-        </h1>
-        <p
-          className={`text-lg ${connected ? "text-green-400" : "text-red-400"}`}
-        >
-          {connected ? "Terhubung ke server ✅" : "Tidak terhubung ❌"}
-        </p>
-      </div>
-    </div>
-  );
+  switch (status) {
+    case "playing":
+      return <Board />;
+    case "finished":
+      return <GameOver />;
+    default:
+      return <Lobby />;
+  }
 }
-
-export default App;
